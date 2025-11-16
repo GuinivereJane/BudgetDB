@@ -1,7 +1,17 @@
 import pdf from 'pdf-parse'
 import { parse as parseDate, isValid } from 'date-fns'
 
-const DATE_FORMATS = ['yyyy-MM-dd', 'd-MMM-yyyy', 'd MMM yyyy', 'MMM d yyyy', 'yyyy/MM/dd', 'd-MMM-yy']
+const DATE_FORMATS = [
+  'yyyy-MM-dd',
+  'd-MMM-yyyy',
+  'd MMM yyyy',
+  'MMM d yyyy',
+  'MMM d, yyyy',
+  'MMMM d yyyy',
+  'MMMM d, yyyy',
+  'yyyy/MM/dd',
+  'd-MMM-yy'
+]
 
 type PeriodBounds = {
   start?: Date | null
@@ -97,14 +107,35 @@ export class RBCStatementParser {
     statement.currency = this.search(/Currency\s*:?\s*([A-Z]{3})/i, text)
     statement.account_name = this.search(/Account\s+Name\s*:?\s*(.+)/i, text)
 
-    const period = this.search(/Statement\s+Period\s*:?\s*(.+)/i, text)
-    if (period) {
-      const matches = period.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4}|\d{4}-\d{2}-\d{2})/g)
-      if (matches && matches.length >= 2) {
-        statement.period_start = this.coerceDate(matches[0])
-        statement.period_end = this.coerceDate(matches[1])
+    const periodBounds = this.extractPeriodBounds(text)
+    if (periodBounds) {
+      statement.period_start = periodBounds.start ?? null
+      statement.period_end = periodBounds.end ?? null
+    }
+  }
+
+  private extractPeriodBounds(text: string): PeriodBounds | null {
+    const rangeMatch = text.match(/From\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s+to\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})/i)
+    if (rangeMatch) {
+      const start = this.coerceDate(rangeMatch[1])
+      const end = this.coerceDate(rangeMatch[2])
+      if (start || end) {
+        return { start: start ?? null, end: end ?? null }
       }
     }
+
+    const periodLine = this.search(/Statement\s+Period\s*:?\s*(.+)/i, text)
+    if (periodLine) {
+      const matches = periodLine.match(/(\d{1,2}\s+[A-Za-z]{3}\s+\d{4}|\d{4}-\d{2}-\d{2})/g)
+      if (matches && matches.length >= 2) {
+        return {
+          start: this.coerceDate(matches[0]),
+          end: this.coerceDate(matches[1])
+        }
+      }
+    }
+
+    return null
   }
 
   private parseStructuredLines(lines: string[], bounds: PeriodBounds): TransactionRecord[] {
@@ -307,7 +338,7 @@ export class RBCStatementParser {
   private normalizeReferenceSpacing(value: string): string {
     return value
       .replace(/([A-Za-z#-])(\d[\d,]*\.\d{2})/g, '$1 $2')
-      .replace(/(\s\d{2,4})(\d{1,3}\.\d{2})/g, '$1 $2')
+      .replace(/(\s\d{2,4})(?=\d[\d,]*\.\d{2})/g, '$1 ')
   }
 
   private stripContinuationPrefix(value: string, currentDate: Date | null, isContinuationLine: boolean): string {

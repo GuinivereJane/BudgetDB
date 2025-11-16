@@ -13,16 +13,16 @@ docker-compose up --build
 This command starts three containers:
 
 1. **db** – PostgreSQL 15 with credentials `budget/budget` and database `budgetdb`.
-2. **backend** – FastAPI application on <http://localhost:8000>. It exposes `/api/statements/upload`, `/api/statements`, `/api/statements/monthly`, and `/api/health`.
+2. **backend** – Express + TypeScript service on <http://localhost:8000>. It exposes `/api/statements/upload`, `/api/statements`, `/api/statements/monthly`, and `/api/health`.
 3. **frontend** – Vite + React dev server on <http://localhost:5173>. It uploads PDFs and renders imported statements plus a monthly transaction dashboard.
 
 Stop everything with `Ctrl+C` and `docker-compose down`.
 
 ## Development notes
 
-- Back-end dependencies live in `backend/requirements.txt`. Use `pip install -r backend/requirements.txt` inside a virtualenv when developing without Docker.
+- Back-end dependencies live in `backend/package.json`. Run `npm install` inside `backend/` and start the watcher with `npm run dev`.
 - Front-end dependencies are managed with npm. Run `npm install` under `frontend/` before `npm run dev`.
-- PDF parsing uses [`pdfplumber`](https://github.com/jsvine/pdfplumber) plus heuristics that target the tabular structure of typical RBC statements. The parser stores every extracted transaction in the `transactions` table and keeps key metadata (account, currency, statement period, filename).
+- PDF parsing uses [`pdf-parse`](https://www.npmjs.com/package/pdf-parse) and TypeScript heuristics that target the tabular structure of typical RBC statements. The parser stores every extracted transaction in the `transactions` table and keeps key metadata (account, currency, statement period, filename).
 - **Never commit actual statement PDFs or personal information.** Keep any samples under a folder listed in `.gitignore` (e.g., `data/` or `statements/`).
 
 ## Database schema

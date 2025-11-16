@@ -14,8 +14,8 @@ services:
   backend:
     build: ./backend
     environment:
-      DATABASE_URL: postgresql+psycopg2://budget:budget@db:5432/budgetdb
-      PYTHONUNBUFFERED: 1
+      DATABASE_URL: postgres://budget:budget@db:5432/budgetdb
+      PORT: 8000
     depends_on:
       - db
     ports:

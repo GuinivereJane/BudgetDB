@@ -34,6 +34,22 @@ button:disabled {
   cursor: not-allowed;
 }
 
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.danger {
+  background-color: #dc2626;
+}
+
+.danger:disabled {
+  background-color: #f87171;
+}
+
 .error {
   color: #e11d48;
 }

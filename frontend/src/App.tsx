@@ -78,41 +78,56 @@ function UploadForm({ onUploaded }: { onUploaded: () => void }) {
   )
 }
 
-function StatementTable({ statements }: { statements: Statement[] }) {
-  if (!statements.length) {
-    return <p>No statements yet. Upload one to get started.</p>
-  }
-
+function StatementTable({
+  statements,
+  onClearAll,
+  isClearing
+}: {
+  statements: Statement[]
+  onClearAll: () => void
+  isClearing: boolean
+}) {
   return (
     <div className="card">
-      <h2>Imported statements</h2>
-      <table>
-        <thead>
-          <tr>
-            <th>Account</th>
-            <th>Period</th>
-            <th>Transactions</th>
-            <th>Imported</th>
-          </tr>
-        </thead>
-        <tbody>
-          {statements.map((statement) => (
-            <tr key={statement.id}>
-              <td>
-                <div>{statement.account_name ?? '—'}</div>
-                <small>{statement.account_number ?? 'N/A'}</small>
-              </td>
-              <td>
-                {statement.period_start ? dayjs(statement.period_start).format('MMM D, YYYY') : 'Unknown'}
-                {' – '}
-                {statement.period_end ? dayjs(statement.period_end).format('MMM D, YYYY') : 'Unknown'}
-              </td>
-              <td>{statement.transactions.length}</td>
-              <td>{dayjs(statement.created_at).format('MMM D, YYYY h:mm A')}</td>
+      <div className="card-header">
+        <h2>Imported statements</h2>
+        {statements.length > 0 && (
+          <button className="danger" onClick={onClearAll} disabled={isClearing}>
+            {isClearing ? 'Clearing…' : 'Clear data'}
+          </button>
+        )}
+      </div>
+      {!statements.length ? (
+        <p>No statements yet. Upload one to get started.</p>
+      ) : (
+        <table>
+          <thead>
+            <tr>
+              <th>Account</th>
+              <th>Period</th>
+              <th>Transactions</th>
+              <th>Imported</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {statements.map((statement) => (
+              <tr key={statement.id}>
+                <td>
+                  <div>{statement.account_name ?? '—'}</div>
+                  <small>{statement.account_number ?? 'N/A'}</small>
+                </td>
+                <td>
+                  {statement.period_start ? dayjs(statement.period_start).format('MMM D, YYYY') : 'Unknown'}
+                  {' – '}
+                  {statement.period_end ? dayjs(statement.period_end).format('MMM D, YYYY') : 'Unknown'}
+                </td>
+                <td>{statement.transactions.length}</td>
+                <td>{dayjs(statement.created_at).format('MMM D, YYYY h:mm A')}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
     </div>
   )
 }
@@ -172,6 +187,7 @@ function App() {
   const [selectedMonth, setSelectedMonth] = useState<number>(dayjs().month() + 1)
   const [selectedYear, setSelectedYear] = useState<number>(dayjs().year())
   const [monthlyView, setMonthlyView] = useState<MonthlyView | null>(null)
+  const [isClearing, setIsClearing] = useState(false)
 
   const refreshStatements = () => {
     axios.get<Statement[]>(`${API_BASE_URL}/statements`).then((response) => {
@@ -195,6 +211,26 @@ function App() {
   useEffect(() => {
     fetchMonthly()
   }, [selectedMonth, selectedYear])
+
+  const clearAllData = () => {
+    if (!statements.length) {
+      return
+    }
+    if (!window.confirm('Are you sure you want to delete all imported statements and transactions?')) {
+      return
+    }
+    setIsClearing(true)
+    axios
+      .delete(`${API_BASE_URL}/statements`)
+      .then(() => {
+        refreshStatements()
+        fetchMonthly()
+      })
+      .catch((error) => {
+        window.alert(error?.response?.data?.detail ?? 'Failed to clear data')
+      })
+      .finally(() => setIsClearing(false))
+  }
 
   const months = useMemo(
     () =>
@@ -232,7 +268,7 @@ function App() {
         }}
       />
       <section className="grid">
-        <StatementTable statements={statements} />
+        <StatementTable statements={statements} onClearAll={clearAllData} isClearing={isClearing} />
         <div className="card">
           <h2>Monthly view</h2>
           <div className="controls">

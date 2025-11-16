@@ -12,6 +12,23 @@ const parser = new RBCStatementParser()
 
 const allowedMimeTypes = new Set(['application/pdf', 'application/octet-stream'])
 
+function coerceDateValue(value: Date | string | null): Date | null {
+  if (!value) {
+    return null
+  }
+  if (value instanceof Date) {
+    return value
+  }
+  const parsed = new Date(value)
+  return Number.isNaN(parsed.getTime()) ? null : parsed
+}
+
+function normalizeTransactionDates(transactions: Transaction[]) {
+  transactions.forEach((txn) => {
+    txn.txn_date = coerceDateValue(txn.txn_date)
+  })
+}
+
 async function bootstrap() {
   await AppDataSource.initialize()
   const app = express()
@@ -27,6 +44,7 @@ async function bootstrap() {
     const repo = AppDataSource.getRepository(Statement)
     const statements = await repo.find({ order: { created_at: 'DESC' } })
     statements.forEach((statement) => {
+      normalizeTransactionDates(statement.transactions)
       statement.transactions.sort((a, b) => {
         if (!a.txn_date && !b.txn_date) return a.id - b.id
         if (!a.txn_date) return 1
@@ -63,6 +81,7 @@ async function bootstrap() {
       .orderBy('transaction.txn_date', 'ASC')
       .addOrderBy('transaction.id', 'ASC')
       .getMany()
+    normalizeTransactionDates(transactions)
 
     const inflow = transactions.filter((txn) => txn.amount > 0).reduce((sum, txn) => sum + txn.amount, 0)
     const outflow = transactions.filter((txn) => txn.amount < 0).reduce((sum, txn) => sum + txn.amount, 0)
@@ -118,6 +137,16 @@ async function bootstrap() {
 
     const saved = await repo.save(statement)
     res.json(saved)
+  })
+
+  app.delete('/api/statements', async (_req, res) => {
+    try {
+      await AppDataSource.query('TRUNCATE TABLE transactions, statements RESTART IDENTITY CASCADE')
+      res.status(204).send()
+    } catch (error) {
+      console.error('Failed to clear statements', error)
+      res.status(500).json({ detail: 'Failed to clear statements' })
+    }
   })
 
   app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

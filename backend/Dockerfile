@@ -1,10 +1,12 @@
 FROM node:20-alpine AS base
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --omit=dev
+# Install dev dependencies to compile TypeScript, then prune them before exporting node_modules
+RUN npm ci
 COPY tsconfig.json ./
 COPY src ./src
 RUN npm run build
+RUN npm prune --omit=dev
 
 FROM node:20-alpine
 WORKDIR /app

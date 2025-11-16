@@ -33,6 +33,9 @@ export class Statement {
   @Column({ name: 'source_filename', type: 'varchar', length: 255, nullable: true })
   source_filename!: string | null
 
+  @Column({ name: 'unique_key', type: 'varchar', length: 64, nullable: true, unique: true })
+  unique_key!: string | null
+
   @CreateDateColumn({ name: 'created_at' })
   created_at!: Date
 

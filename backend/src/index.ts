@@ -1,6 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
+import { createHash } from 'crypto'
 import { config } from './config'
 import { AppDataSource } from './data-source'
 import { Statement } from './entities/Statement'
@@ -117,6 +118,13 @@ async function bootstrap() {
     const repo = AppDataSource.getRepository(Statement)
     const txnRepo = AppDataSource.getRepository(Transaction)
 
+    const uniqueKey = createHash('sha256').update(statementData.raw_text).digest('hex')
+    const existing = await repo.findOne({ where: { unique_key: uniqueKey } })
+    if (existing) {
+      res.status(409).json({ detail: 'This statement has already been imported' })
+      return
+    }
+
     const statement = repo.create({
       account_name: statementData.account_name,
       account_number: statementData.account_number,
@@ -125,6 +133,7 @@ async function bootstrap() {
       period_end: statementData.period_end,
       raw_metadata: { raw_text_length: statementData.raw_text.length },
       source_filename: req.file.originalname,
+      unique_key: uniqueKey,
       transactions: statementData.transactions.map((txn) =>
         txnRepo.create({
           txn_date: txn.txn_date,

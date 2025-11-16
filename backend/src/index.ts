@@ -1,4 +1,4 @@
-import express, { Request, Response, NextFunction } from 'express'
+import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import { config } from './config'
@@ -19,11 +19,11 @@ async function bootstrap() {
   app.use(cors({ origin: config.allowedOrigins, credentials: true }))
   app.use(express.json())
 
-  app.get('/api/health', (_req: Request, res: Response) => {
+  app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' })
   })
 
-  app.get('/api/statements', async (_req: Request, res: Response<Statement[]>) => {
+  app.get('/api/statements', async (_req, res) => {
     const repo = AppDataSource.getRepository(Statement)
     const statements = await repo.find({ order: { created_at: 'DESC' } })
     statements.forEach((statement) => {
@@ -38,51 +38,46 @@ async function bootstrap() {
     res.json(statements)
   })
 
-  type MonthlySummaryQuery = { month?: string; year?: string }
+  app.get('/api/statements/monthly', async (req, res) => {
+    const month = Number(req.query.month)
+    const year = Number(req.query.year)
 
-  app.get(
-    '/api/statements/monthly',
-    async (req: Request<unknown, unknown, unknown, MonthlySummaryQuery>, res: Response) => {
-      const month = Number(req.query.month)
-      const year = Number(req.query.year)
-
-      if (!Number.isFinite(month) || !Number.isFinite(year)) {
-        res.status(400).json({ detail: 'month and year are required numeric query params' })
-        return
-      }
-
-      if (month < 1 || month > 12) {
-        res.status(400).json({ detail: 'month must be between 1 and 12' })
-        return
-      }
-
-      const start = new Date(Date.UTC(year, month - 1, 1))
-      const end = new Date(Date.UTC(month === 12 ? year + 1 : year, month === 12 ? 0 : month, 1))
-
-      const txnRepo = AppDataSource.getRepository(Transaction)
-      const transactions = await txnRepo
-        .createQueryBuilder('transaction')
-        .where('transaction.txn_date >= :start', { start })
-        .andWhere('transaction.txn_date < :end', { end })
-        .orderBy('transaction.txn_date', 'ASC')
-        .addOrderBy('transaction.id', 'ASC')
-        .getMany()
-
-      const inflow = transactions.filter((txn) => txn.amount > 0).reduce((sum, txn) => sum + txn.amount, 0)
-      const outflow = transactions.filter((txn) => txn.amount < 0).reduce((sum, txn) => sum + txn.amount, 0)
-
-      res.json({
-        month,
-        year,
-        total_inflow: Number(inflow.toFixed(2)),
-        total_outflow: Number(outflow.toFixed(2)),
-        net: Number((inflow + outflow).toFixed(2)),
-        transactions
-      })
+    if (!Number.isFinite(month) || !Number.isFinite(year)) {
+      res.status(400).json({ detail: 'month and year are required numeric query params' })
+      return
     }
-  )
 
-  app.post('/api/statements/upload', upload.single('file'), async (req: Request, res: Response) => {
+    if (month < 1 || month > 12) {
+      res.status(400).json({ detail: 'month must be between 1 and 12' })
+      return
+    }
+
+    const start = new Date(Date.UTC(year, month - 1, 1))
+    const end = new Date(Date.UTC(month === 12 ? year + 1 : year, month === 12 ? 0 : month, 1))
+
+    const txnRepo = AppDataSource.getRepository(Transaction)
+    const transactions = await txnRepo
+      .createQueryBuilder('transaction')
+      .where('transaction.txn_date >= :start', { start })
+      .andWhere('transaction.txn_date < :end', { end })
+      .orderBy('transaction.txn_date', 'ASC')
+      .addOrderBy('transaction.id', 'ASC')
+      .getMany()
+
+    const inflow = transactions.filter((txn) => txn.amount > 0).reduce((sum, txn) => sum + txn.amount, 0)
+    const outflow = transactions.filter((txn) => txn.amount < 0).reduce((sum, txn) => sum + txn.amount, 0)
+
+    res.json({
+      month,
+      year,
+      total_inflow: Number(inflow.toFixed(2)),
+      total_outflow: Number(outflow.toFixed(2)),
+      net: Number((inflow + outflow).toFixed(2)),
+      transactions
+    })
+  })
+
+  app.post('/api/statements/upload', upload.single('file'), async (req, res) => {
     if (!req.file) {
       res.status(400).json({ detail: 'A PDF statement is required' })
       return
@@ -125,7 +120,7 @@ async function bootstrap() {
     res.json(saved)
   })
 
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
     console.error(err)
     res.status(500).json({ detail: 'Unexpected server error' })
   })

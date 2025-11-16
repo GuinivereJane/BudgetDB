@@ -36,8 +36,8 @@ export class RBCStatementParser {
     const raw_text = pdfResult.text
     const lines = raw_text
       .split(/\r?\n/)
-      .map((line: string) => line.trim())
-      .filter((line: string) => line.length)
+      .map((line) => line.trim())
+      .filter((line) => line.length)
 
     const statement: StatementData = {
       account_name: null,

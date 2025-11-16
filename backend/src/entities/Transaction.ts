@@ -1,5 +1,6 @@
 import { Column, Entity, Index, JoinColumn, ManyToOne, PrimaryGeneratedColumn } from 'typeorm'
 import { Statement } from './Statement'
+import { Category } from './Category'
 
 @Entity('transactions')
 export class Transaction {
@@ -24,4 +25,12 @@ export class Transaction {
   })
   @JoinColumn({ name: 'statement_id' })
   statement!: Statement
+
+  @ManyToOne(() => Category, (category) => category.transactions, {
+    nullable: true,
+    onDelete: 'SET NULL',
+    eager: true
+  })
+  @JoinColumn({ name: 'category_id' })
+  category!: Category | null
 }

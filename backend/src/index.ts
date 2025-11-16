@@ -7,6 +7,7 @@ import { AppDataSource } from './data-source'
 import { Statement } from './entities/Statement'
 import { Transaction } from './entities/Transaction'
 import { RBCStatementParser } from './parsers/rbcStatementParser'
+import { categorizeRecord, ensureDefaultCategories, loadOrderedCategories, recategorizeExistingTransactions } from './services/categoryService'
 
 const upload = multer({ storage: multer.memoryStorage() })
 const parser = new RBCStatementParser()
@@ -32,6 +33,8 @@ function normalizeTransactionDates(transactions: Transaction[]) {
 
 async function bootstrap() {
   await AppDataSource.initialize()
+  await ensureDefaultCategories()
+  await recategorizeExistingTransactions()
   const app = express()
 
   app.use(cors({ origin: config.allowedOrigins, credentials: true }))
@@ -57,6 +60,67 @@ async function bootstrap() {
     res.json(statements)
   })
 
+  app.get('/api/transactions/export', async (_req, res) => {
+    const txnRepo = AppDataSource.getRepository(Transaction)
+    const transactions = await txnRepo
+      .createQueryBuilder('transaction')
+      .leftJoinAndSelect('transaction.statement', 'statement')
+      .leftJoinAndSelect('transaction.category', 'category')
+      .orderBy('transaction.txn_date', 'ASC')
+      .addOrderBy('transaction.id', 'ASC')
+      .getMany()
+
+    const headers = [
+      'statement_id',
+      'account_name',
+      'account_number',
+      'period_start',
+      'period_end',
+      'category',
+      'txn_date',
+      'description',
+      'amount',
+      'balance'
+    ]
+    const rows = transactions.map((txn) => [
+      txn.statement?.id ?? '',
+      txn.statement?.account_name ?? '',
+      txn.statement?.account_number ?? '',
+      txn.statement?.period_start ?? '',
+      txn.statement?.period_end ?? '',
+      txn.category?.name ?? '',
+      txn.txn_date ?? '',
+      txn.description ?? '',
+      txn.amount ?? '',
+      txn.balance ?? ''
+    ])
+    const csv = [headers, ...rows]
+      .map((row) =>
+        row
+          .map((value) => {
+            if (value === null || value === undefined) {
+              return ''
+            }
+            const stringValue =
+              value instanceof Date
+                ? value.toISOString().split('T')[0]
+                : typeof value === 'number'
+                  ? value.toString()
+                  : String(value)
+            if (/[",\n]/.test(stringValue)) {
+              return `"${stringValue.replace(/"/g, '""')}"`
+            }
+            return stringValue
+          })
+          .join(',')
+      )
+      .join('\n')
+
+    res.setHeader('Content-Type', 'text/csv')
+    res.setHeader('Content-Disposition', 'attachment; filename="transactions.csv"')
+    res.send(csv)
+  })
+
   app.get('/api/statements/monthly', async (req, res) => {
     const month = Number(req.query.month)
     const year = Number(req.query.year)
@@ -77,6 +141,7 @@ async function bootstrap() {
     const txnRepo = AppDataSource.getRepository(Transaction)
     const transactions = await txnRepo
       .createQueryBuilder('transaction')
+      .leftJoinAndSelect('transaction.category', 'category')
       .where('transaction.txn_date >= :start', { start })
       .andWhere('transaction.txn_date < :end', { end })
       .orderBy('transaction.txn_date', 'ASC')
@@ -86,6 +151,20 @@ async function bootstrap() {
 
     const inflow = transactions.filter((txn) => txn.amount > 0).reduce((sum, txn) => sum + txn.amount, 0)
     const outflow = transactions.filter((txn) => txn.amount < 0).reduce((sum, txn) => sum + txn.amount, 0)
+    const categoryTotals = transactions.reduce<Record<string, { name: string; color: string | null; total: number }>>(
+      (acc, txn) => {
+        const key = txn.category?.code ?? txn.category?.name ?? 'uncategorized'
+        const entry = acc[key] ?? {
+          name: txn.category?.name ?? 'Uncategorized',
+          color: txn.category?.color ?? null,
+          total: 0
+        }
+        entry.total += txn.amount
+        acc[key] = entry
+        return acc
+      },
+      {}
+    )
 
     res.json({
       month,
@@ -93,7 +172,12 @@ async function bootstrap() {
       total_inflow: Number(inflow.toFixed(2)),
       total_outflow: Number(outflow.toFixed(2)),
       net: Number((inflow + outflow).toFixed(2)),
-      transactions
+      transactions,
+      category_totals: Object.values(categoryTotals).map((entry) => ({
+        name: entry.name,
+        color: entry.color,
+        total: Number(entry.total.toFixed(2))
+      }))
     })
   })
 
@@ -143,9 +227,20 @@ async function bootstrap() {
         })
       )
     })
+    const categories = await loadOrderedCategories()
+    const fallbackCategory = categories.find((cat) => cat.code === 'uncategorized') ?? null
+    const incomeCategory = categories.find((cat) => cat.code === 'income') ?? null
+    statement.transactions.forEach((txn) => {
+      txn.category = categorizeRecord(txn, categories, fallbackCategory, incomeCategory)
+    })
 
     const saved = await repo.save(statement)
     res.json(saved)
+  })
+
+  app.post('/api/transactions/categorize', async (_req, res) => {
+    const updated = await recategorizeExistingTransactions()
+    res.json({ updated })
   })
 
   app.delete('/api/statements', async (_req, res) => {

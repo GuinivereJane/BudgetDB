@@ -4,6 +4,7 @@ import { parse } from 'pg-connection-string'
 import { config } from './config'
 import { Statement } from './entities/Statement'
 import { Transaction } from './entities/Transaction'
+import { Category } from './entities/Category'
 
 const connectionOptions = parse(config.databaseUrl)
 
@@ -14,7 +15,7 @@ export const AppDataSource = new DataSource({
   username: connectionOptions.user ?? 'budget',
   password: connectionOptions.password ?? 'budget',
   database: connectionOptions.database ?? 'budgetdb',
-  entities: [Statement, Transaction],
+  entities: [Statement, Transaction, Category],
   synchronize: true,
   logging: false
 })

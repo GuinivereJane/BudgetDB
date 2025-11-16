@@ -1,0 +1,2 @@
+# BudgetDB
+DB for budgeting
